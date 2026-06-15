@@ -76,14 +76,32 @@ function initSchema(conn) {
     CREATE INDEX IF NOT EXISTS idx_pipe_status   ON pipe_segments(status);
     CREATE INDEX IF NOT EXISTS idx_station_district ON pump_stations(district);
     CREATE INDEX IF NOT EXISTS idx_station_status   ON pump_stations(status);
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      operator_id      INTEGER NOT NULL,
+      operator_username TEXT NOT NULL,
+      action_time      TEXT NOT NULL DEFAULT (datetime('now')),
+      action_type      TEXT NOT NULL CHECK(action_type IN ('create','update','delete','restore')),
+      entity_type      TEXT NOT NULL CHECK(entity_type IN ('user','pipe','station')),
+      entity_id        INTEGER NOT NULL,
+      source_ip        TEXT,
+      diff_data        TEXT NOT NULL,
+      prev_hash        TEXT NOT NULL,
+      current_hash     TEXT NOT NULL UNIQUE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_entity  ON audit_logs(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_time    ON audit_logs(action_time);
+    CREATE INDEX IF NOT EXISTS idx_audit_op      ON audit_logs(operator_id);
   `);
 }
 
 /** 清空所有业务数据（测试用）。 */
 function resetAll() {
   const conn = getDb();
-  conn.exec('DELETE FROM pipe_segments; DELETE FROM pump_stations; DELETE FROM users;');
-  conn.exec("DELETE FROM sqlite_sequence WHERE name IN ('pipe_segments','pump_stations','users');");
+  conn.exec('DELETE FROM audit_logs; DELETE FROM pipe_segments; DELETE FROM pump_stations; DELETE FROM users;');
+  conn.exec("DELETE FROM sqlite_sequence WHERE name IN ('audit_logs','pipe_segments','pump_stations','users');");
 }
 
 function close() {

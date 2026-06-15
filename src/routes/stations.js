@@ -43,6 +43,14 @@ router.get('/:id', (req, res) => {
   }
 });
 
+function _auditCtx(req) {
+  return {
+    operatorId: req.user.id,
+    operatorUsername: req.user.username,
+    sourceIp: req.ip || req.socket.remoteAddress || null,
+  };
+}
+
 /** POST /api/stations —— 新建泵站。 */
 router.post('/', requireRole('admin', 'operator'), (req, res) => {
   try {
@@ -50,9 +58,10 @@ router.post('/', requireRole('admin', 'operator'), (req, res) => {
     if (store.getStationByCode(data.code)) {
       return sendError(res, 409, '泵站编号已存在');
     }
-    const station = store.createStation(data);
+    const station = store.createAuditedStation(data, _auditCtx(req));
     return sendData(res, 201, station);
   } catch (err) {
+    if (err.message === 'CODE_EXISTS') return sendError(res, 409, '泵站编号已存在');
     if (err instanceof HttpError) return sendError(res, err.status, err.message, err.details);
     throw err;
   }
@@ -64,9 +73,10 @@ router.put('/:id', requireRole('admin', 'operator'), (req, res) => {
     const id = parseId(req.params.id);
     if (!store.getStationById(id)) return sendError(res, 404, '泵站不存在');
     const data = parseStationBody(req.body, { isCreate: false });
-    const station = store.updateStation(id, data);
+    const station = store.updateAuditedStation(id, data, _auditCtx(req));
     return sendData(res, 200, station);
   } catch (err) {
+    if (err.message === 'NOT_FOUND') return sendError(res, 404, '泵站不存在');
     if (err instanceof HttpError) return sendError(res, err.status, err.message, err.details);
     throw err;
   }
@@ -77,7 +87,8 @@ router.delete('/:id', requireRole('admin'), (req, res) => {
   try {
     const id = parseId(req.params.id);
     if (!store.getStationById(id)) return sendError(res, 404, '泵站不存在');
-    store.deleteStation(id);
+    const deleted = store.deleteAuditedStation(id, _auditCtx(req));
+    if (!deleted) return sendError(res, 404, '泵站不存在');
     return sendData(res, 200, { id });
   } catch (err) {
     if (err instanceof HttpError) return sendError(res, err.status, err.message, err.details);

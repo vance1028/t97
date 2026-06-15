@@ -46,6 +46,14 @@ router.get('/:id', (req, res) => {
   }
 });
 
+function _auditCtx(req) {
+  return {
+    operatorId: req.user.id,
+    operatorUsername: req.user.username,
+    sourceIp: req.ip || req.socket.remoteAddress || null,
+  };
+}
+
 /** POST /api/pipes —— 新建管段。 */
 router.post('/', requireRole('admin', 'operator'), (req, res) => {
   try {
@@ -53,9 +61,10 @@ router.post('/', requireRole('admin', 'operator'), (req, res) => {
     if (store.getPipeByCode(data.code)) {
       return sendError(res, 409, '管段编号已存在');
     }
-    const pipe = store.createPipe(data);
+    const pipe = store.createAuditedPipe(data, _auditCtx(req));
     return sendData(res, 201, pipe);
   } catch (err) {
+    if (err.message === 'CODE_EXISTS') return sendError(res, 409, '管段编号已存在');
     if (err instanceof HttpError) return sendError(res, err.status, err.message, err.details);
     throw err;
   }
@@ -67,9 +76,10 @@ router.put('/:id', requireRole('admin', 'operator'), (req, res) => {
     const id = parseId(req.params.id);
     if (!store.getPipeById(id)) return sendError(res, 404, '管段不存在');
     const data = parsePipeBody(req.body, { isCreate: false });
-    const pipe = store.updatePipe(id, data);
+    const pipe = store.updateAuditedPipe(id, data, _auditCtx(req));
     return sendData(res, 200, pipe);
   } catch (err) {
+    if (err.message === 'NOT_FOUND') return sendError(res, 404, '管段不存在');
     if (err instanceof HttpError) return sendError(res, err.status, err.message, err.details);
     throw err;
   }
@@ -80,7 +90,8 @@ router.delete('/:id', requireRole('admin'), (req, res) => {
   try {
     const id = parseId(req.params.id);
     if (!store.getPipeById(id)) return sendError(res, 404, '管段不存在');
-    store.deletePipe(id);
+    const deleted = store.deleteAuditedPipe(id, _auditCtx(req));
+    if (!deleted) return sendError(res, 404, '管段不存在');
     return sendData(res, 200, { id });
   } catch (err) {
     if (err instanceof HttpError) return sendError(res, err.status, err.message, err.details);
